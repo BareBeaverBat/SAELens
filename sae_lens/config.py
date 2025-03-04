@@ -516,7 +516,7 @@ class CacheActivationsRunnerConfig:
         hook_name (str): The name of the hook to use.
         hook_layer (int): The layer of the final hook. Currently only support a single hook, so this should be the same as hook_name.
         d_in (int): Dimension of the model.
-        total_training_tokens (int): Total number of tokens to process.
+        training_tokens (int): Total number of tokens to process.
         context_size (int): Context size to process. Can be left as -1 if the dataset is tokenized.
         model_class_name (str): The name of the class of the model to use. This should be either `HookedTransformer` or `HookedMamba`.
         new_cached_activations_path (str, optional): The path to save the activations.

@@ -572,9 +572,13 @@ class SAE(HookedRootModule):
 
         Args:
             release: The release name. This will be mapped to a huggingface repo id based on the pretrained_saes.yaml file.
-            id: The id of the SAE to load. This will be mapped to a path in the huggingface repo.
+            sae_id: The id of the SAE to load. This will be mapped to a path in the huggingface repo.
             device: The device to load the SAE on.
-            return_sparsity_if_present: If True, will return the log sparsity tensor if it is present in the model directory in the Hugging Face model hub.
+
+        Returns:
+            The pretrained SAE
+            The dict describing that SAE's configuration
+            The log sparsity tensor if it is present in the model directory in the Hugging Face model hub
         """
 
         # get sae directory

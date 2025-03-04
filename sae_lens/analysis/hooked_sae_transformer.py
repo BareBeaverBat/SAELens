@@ -242,7 +242,7 @@ class HookedSAETransformer(HookedTransformer):
 
         Args:
             *model_args: Positional arguments for the model forward pass
-            act_names: (Union[HookedSAE, List[HookedSAE]]) The SAEs to be attached for this forward pass
+            saes: (Union[SAE, List[SAE]]) The SAEs to be attached for this forward pass
             reset_saes_end: (bool) If True, all SAEs added during this run are removed at the end, and previously attached SAEs are restored to their original state. (default: True)
             fwd_hooks: (List[Tuple[Union[str, Callable], Callable]]) List of forward hooks to apply
             bwd_hooks: (List[Tuple[Union[str, Callable], Callable]]) List of backward hooks to apply
