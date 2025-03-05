@@ -69,13 +69,22 @@ class HookedSAETransformer(HookedTransformer):
         self.acts_to_saes: Dict[str, SAE] = {}  # type: ignore
 
     def add_sae(self, sae: SAE, use_error_term: Optional[bool] = None):
-        """Attaches an SAE to the model
+        """
+        Attach an SAE to the model.
 
-        WARNING: This sae will be permanantly attached until you remove it with reset_saes. This function will also overwrite any existing SAE attached to the same hook point.
+        This method attaches a Sparse Autoencoder to a specific hook point in the model,
+        replacing the normal hook point with the SAE. The SAE will then process activations
+        at that hook point during forward passes.
+
+        WARNING: This SAE will be permanently attached until you remove it with reset_saes.
+        This function will also overwrite any existing SAE attached to the same hook point.
 
         Args:
-            sae: SparseAutoencoderBase. The SAE to attach to the model
-            use_error_term: (Optional[bool]) If provided, will set the use_error_term attribute of the SAE to this value. Determines whether the SAE returns input or reconstruction. Defaults to None.
+            sae: The Sparse Autoencoder to attach to the model
+            use_error_term: If provided, will set the use_error_term attribute of the SAE
+                to this value. When True, the SAE returns input + reconstruction error.
+                When False, it returns the reconstruction directly. When None (default), the SAE's existing
+                use_error_term setting will be followed.
         """
         act_name = sae.cfg.hook_name
         if (act_name not in self.acts_to_saes) and (act_name not in self.hook_dict):
@@ -93,15 +102,22 @@ class HookedSAETransformer(HookedTransformer):
         self.setup()
 
     def _reset_sae(self, act_name: str, prev_sae: Optional[SAE] = None):
-        """Resets an SAE that was attached to the model
+        """
+        Reset or replace an SAE attached to a specific hook point.
 
-        By default will remove the SAE from that hook_point.
-        If prev_sae is provided, will replace the current SAE with the provided one.
-        This is mainly used to restore previously attached SAEs after temporarily running with different SAEs (eg with run_with_saes)
+        This internal method removes or replaces an SAE that was previously attached
+        to a hook point in the model. It handles restoring original use_error_term settings
+        and properly updating the model's hook structure.
+
+        By default, this will remove the SAE from the hook point and restore the original hook.
+        If prev_sae is provided, it will replace the current SAE with the provided one.
+        This is mainly used to restore previously attached SAEs after temporarily
+        running with different SAEs (e.g., with run_with_saes).
 
         Args:
-            act_name: str. The hook_name of the SAE to reset
-            prev_sae: Optional[HookedSAE]. The SAE to replace the current one with. If None, will just remove the SAE from this hook point. Defaults to None
+            act_name: The hook name of the SAE to reset
+            prev_sae: The SAE to replace the current one with. If None, will just
+                remove the SAE from this hook point. Defaults to None.
         """
         if act_name not in self.acts_to_saes:
             logging.warning(
@@ -126,14 +142,28 @@ class HookedSAETransformer(HookedTransformer):
         act_names: Optional[Union[str, List[str]]] = None,
         prev_saes: Optional[List[Union[SAE, None]]] = None,
     ):
-        """Reset the SAEs attached to the model
+        """
+        Reset one, multiple, or all SAEs attached to the model.
 
-        If act_names are provided will just reset SAEs attached to those hooks. Otherwise will reset all SAEs attached to the model.
-        Optionally can provide a list of prev_saes to reset to. This is mainly used to restore previously attached SAEs after temporarily running with different SAEs (eg with run_with_saes).
+        This method handles clearing or replacing SAEs that were previously attached to
+        hook points in the model. It can target specific hook points or reset all attached
+        SAEs at once.
+
+        If act_names are provided, it will only reset SAEs attached to those specific hooks.
+        Otherwise, it will reset all SAEs attached to the model.
+
+        Optionally, you can provide a list of prev_saes to reset to. This is mainly used
+        to restore previously attached SAEs after temporarily running with different SAEs
+        (e.g., with run_with_saes).
 
         Args:
-            act_names (Optional[Union[str, List[str]]): The act_names of the SAEs to reset. If None, will reset all SAEs attached to the model. Defaults to None.
-            prev_saes (Optional[List[Union[HookedSAE, None]]]): List of SAEs to replace the current ones with. If None, will just remove the SAEs. Defaults to None.
+            act_names: The hook names of the SAEs to reset. If None, will reset all
+                SAEs attached to the model. Can be a single string or a list of hook names.
+            prev_saes: List of SAEs to replace the current ones with. If None, will
+                just remove the SAEs. Must match the length of act_names if provided.
+
+        Raises:
+            ValueError: If act_names and prev_saes have different lengths.
         """
         if isinstance(act_names, str):
             act_names = [act_names]

@@ -104,10 +104,33 @@ def run_evals(
     activation_store: ActivationsStore,
     model: HookedRootModule,
     eval_config: EvalConfig = EvalConfig(),
+    # TODO model_kwargs and ignore_tokens parameters use mutable default values
     model_kwargs: Mapping[str, Any] = {},
     ignore_tokens: set[int | None] = set(),
     verbose: bool = False,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    """
+    Run evaluation metrics on a Sparse Autoencoder.
+
+    This function evaluates an SAE's performance on various metrics based on the provided
+    configuration. Metrics can include reconstruction quality, sparsity levels,
+    model behavior preservation, and more.
+
+    Args:
+        sae: The Sparse Autoencoder to evaluate
+        activation_store: ActivationsStore providing model activations for evaluation
+        model: The language model that the SAE was trained on
+        eval_config: Configuration specifying which metrics to compute and other parameters
+        model_kwargs: Additional keyword arguments to pass to the model
+        ignore_tokens: Set of token IDs to exclude from evaluation
+        verbose: Whether to display progress information during evaluation
+
+    Returns:
+        A tuple of two dictionaries:
+        - The first contains scalar metrics grouped by category (reconstruction_quality, sparsity, etc.) into
+            sub-dictionaries, some of which may be missing if they would otherwise be empty;
+        - The second contains feature-wise metrics
+    """
     hook_name = sae.cfg.hook_name
     actual_batch_size = (
         eval_config.batch_size_prompts or activation_store.store_batch_size_prompts

@@ -19,6 +19,25 @@ def upload_saes_to_huggingface(
     show_progress: bool = True,
     add_default_readme: bool = True,
 ):
+    """
+    Upload one or more Sparse Autoencoders to the Hugging Face model hub.
+
+    This function organizes SAEs in a repository structure compatible with SAELens,
+    allowing them to be loaded with SAE.from_pretrained(). It can handle SAEs
+    provided directly as objects or as paths to saved models.
+
+    Args:
+        saes_dict: Dictionary mapping SAE IDs to SAE objects or paths to saved SAEs
+        hf_repo_id: ID of the Hugging Face repository to upload to (e.g., "username/repo-name")
+            Will be created if it doesn't exist yet
+        hf_revision: Git revision to commit from (default: "main")
+        show_progress: Whether to display a progress bar during upload
+        add_default_readme: Whether to add a default README.md file to the repository
+
+    Raises:
+        ValueError: If saes_dict is empty
+        FileNotFoundError: if saes_dict contains invalid SAE references
+    """
     api = HfApi()
     if len(saes_dict) == 0:
         raise ValueError("No SAEs to upload")

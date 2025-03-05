@@ -70,6 +70,15 @@ class SAEConfig:
 
     @classmethod
     def from_dict(cls, config_dict: dict[str, Any]) -> "SAEConfig":
+        """
+        Create a SAEConfig instance from a dictionary.
+
+        Args:
+            config_dict: Dictionary containing configuration parameters.
+
+        Returns:
+            A new SAEConfig instance with the parameters from the dictionary.
+        """
         # rename dict:
         rename_dict = {  # old : new
             "hook_point": "hook_name",
@@ -94,6 +103,12 @@ class SAEConfig:
     # def __post_init__(self):
 
     def to_dict(self) -> dict[str, Any]:
+        """
+        Convert the SAEConfig instance to a dictionary.
+
+        Returns:
+            Dictionary representation of the configuration.
+        """
         return {
             "architecture": self.architecture,
             "d_in": self.d_in,
@@ -395,6 +410,19 @@ class SAE(HookedRootModule):
     def encode_gated(
         self, x: Float[torch.Tensor, "... d_in"]
     ) -> Float[torch.Tensor, "... d_sae"]:
+        """
+        Encode input activations using a gated sparse autoencoder.
+
+        This method is used for the 'gated' architecture which separates activation
+        into two paths: a gating path that determines which features are active,
+        and a magnitude path that determines the strength of active features.
+
+        Args:
+            x: Input tensor of activations with shape (..., d_in)
+
+        Returns:
+            Encoded sparse features with shape (..., d_sae)
+        """
         sae_in = self.process_sae_in(x)
 
         # Gating path
@@ -413,7 +441,17 @@ class SAE(HookedRootModule):
         self, x: Float[torch.Tensor, "... d_in"]
     ) -> Float[torch.Tensor, "... d_sae"]:
         """
-        Calculate SAE features from inputs
+        Calculate SAE features from inputs using the JumpReLU architecture.
+
+        This method uses a special activation function that combines ReLU with
+        a thresholding operation to encourage sparsity. Features only activate
+        when their pre-activation exceeds the learned thresholds.
+
+        Args:
+            x: Input tensor of activations with shape (..., d_in)
+
+        Returns:
+            Encoded sparse features with shape (..., d_sae)
         """
         sae_in = self.process_sae_in(x)
 
@@ -428,7 +466,16 @@ class SAE(HookedRootModule):
         self, x: Float[torch.Tensor, "... d_in"]
     ) -> Float[torch.Tensor, "... d_sae"]:
         """
-        Calculate SAE features from inputs
+        Calculate SAE features from inputs using the standard architecture.
+
+        This is the standard (non-gated) encoding method that applies a linear
+        transformation followed by an activation function.
+
+        Args:
+            x: Input tensor of activations with shape (..., d_in)
+
+        Returns:
+            Encoded sparse features with shape (..., d_sae)
         """
         sae_in = self.process_sae_in(x)
 
@@ -439,6 +486,23 @@ class SAE(HookedRootModule):
     def process_sae_in(
         self, sae_in: Float[torch.Tensor, "... d_in"]
     ) -> Float[torch.Tensor, "... d_sae"]:
+        # TODO why does this say the output dimension is d_sae?
+        """
+        Process input activations before encoding.
+
+        This method performs several pre-processing steps on the input activations:
+        1. Converts to the appropriate dtype
+        2. Applies any necessary reshaping
+        3. Passes through the hook_sae_input hookpoint
+        4. Applies runtime activation normalization
+        5. Applies decoder bias if configured to do so
+
+        Args:
+            sae_in: Raw input tensor of activations with shape (..., d_in)
+
+        Returns:
+            Processed input tensor ready for encoding
+        """
         sae_in = sae_in.to(self.dtype)
         sae_in = self.reshape_fn_in(sae_in)
         sae_in = self.hook_sae_input(sae_in)
@@ -448,7 +512,23 @@ class SAE(HookedRootModule):
     def decode(
         self, feature_acts: Float[torch.Tensor, "... d_sae"]
     ) -> Float[torch.Tensor, "... d_in"]:
-        """Decodes SAE feature activation tensor into a reconstructed input activation tensor."""
+        """
+        Decode feature activations into reconstructed input activations.
+
+        This method transforms the sparse feature activations back into the original
+        input space by applying a linear transformation, potentially with scaling factors,
+        followed by post-processing steps.
+
+        Args:
+            feature_acts: Feature activation tensor with shape (..., d_sae)
+
+        Returns:
+            Reconstructed input activation tensor with shape (..., d_in)
+
+        Note:
+            If runtime activation normalization is used, this will fail if called twice
+            without calling encode in between.
+        """
         # "... d_sae, d_sae d_in -> ... d_in",
         sae_out = self.hook_sae_recons(
             self.apply_finetuning_scaling_factor(feature_acts) @ self.W_dec + self.b_dec
@@ -463,6 +543,15 @@ class SAE(HookedRootModule):
 
     @torch.no_grad()
     def fold_W_dec_norm(self):
+        """
+        Normalize decoder weights to unit norm and adjust other parameters accordingly.
+
+        This method normalizes the decoder weights (W_dec) to have unit norm along each row,
+        and compensates by scaling the encoder weights (W_enc) and biases to maintain
+        functional equivalence. The specific parameters adjusted depend on the SAE architecture.
+
+        This operation is performed in-place and does not require gradients.
+        """
         W_dec_norms = self.W_dec.norm(dim=-1).unsqueeze(1)
         self.W_dec.data = self.W_dec.data / W_dec_norms
         self.W_enc.data = self.W_enc.data * W_dec_norms.T
@@ -480,6 +569,20 @@ class SAE(HookedRootModule):
     def fold_activation_norm_scaling_factor(
         self, activation_norm_scaling_factor: float
     ):
+        """
+        Fold activation normalization scaling into model weights.
+
+        This method incorporates a static activation normalization scaling factor
+        directly into the model weights, eliminating the need for that scaling-normalization computation at runtime.
+        It scales the encoder weights up and decoder weights down to maintain functional equivalence.
+
+        Args:
+            activation_norm_scaling_factor: The scaling factor to fold into the weights
+
+        Note:
+            After calling this method, the normalization is no longer needed at runtime,
+            so self.cfg.normalize_activations is set to "none".
+        """
         self.W_enc.data = self.W_enc.data * activation_norm_scaling_factor
         # previously weren't doing this.
         self.W_dec.data = self.W_dec.data / activation_norm_scaling_factor
@@ -496,7 +599,25 @@ class SAE(HookedRootModule):
         self, path: str | Path, sparsity: torch.Tensor
     ) -> Tuple[Path, Path, Path]: ...
 
-    def save_model(self, path: str | Path, sparsity: Optional[torch.Tensor] = None):
+    def save_model(
+        self, path: str | Path, sparsity: Optional[torch.Tensor] = None
+    ) -> Union[Tuple[Path, Path], Tuple[Path, Path, Path]]:
+        """
+        Save the SAE model to disk.
+
+        This method saves:
+        1. The model weights as a safetensors file
+        2. The configuration as a JSON file
+        3. Optionally, the sparsity statistics if provided
+
+        Args:
+            path: Directory path where the model files will be saved
+            sparsity: Optional tensor containing sparsity statistics to save
+
+        Returns:
+            If sparsity is not provided: Tuple of (weights_path, config_path)
+            If sparsity is provided: Tuple of (weights_path, config_path, sparsity_path)
+        """
         path = Path(path)
 
         if not path.exists():
@@ -525,16 +646,50 @@ class SAE(HookedRootModule):
 
     # overwrite this in subclasses to modify the state_dict in-place before saving
     def process_state_dict_for_saving(self, state_dict: dict[str, Any]) -> None:
+        """
+        Process the state dictionary before saving.
+
+        This is a hook (in the OOP sense) that can be overridden in subclasses to modify the state dictionary
+        before it is saved to disk. The default implementation does nothing.
+
+        Args:
+            state_dict: The model's state dictionary, to be modified in-place
+        """
         pass
 
     # overwrite this in subclasses to modify the state_dict in-place after loading
     def process_state_dict_for_loading(self, state_dict: dict[str, Any]) -> None:
+        """
+        Process the state dictionary after loading.
+
+        This is a hook (in the OOP sense) that can be overridden in subclasses to modify the state dictionary
+        after it is loaded from disk but before it is loaded into the model. The default
+        implementation does nothing.
+
+        Args:
+            state_dict: The loaded state dictionary, to be modified in-place
+        """
         pass
 
     @classmethod
     def load_from_pretrained(
         cls, path: str, device: str = "cpu", dtype: str | None = None
     ) -> "SAE":
+        """
+        Load a pretrained SAE model from disk.
+
+        Args:
+            path: Directory path where the model files are stored
+            device: Device to load the model on ('cpu', 'cuda', etc.)
+            dtype: Optional data type to use for the model
+
+        Returns:
+            Loaded SAE instance
+
+        Note:
+            This loads a model saved with save_model(), and is different from
+            the from_pretrained method which loads from a Hugging Face model hub.
+        """
         # get the config
         config_path = os.path.join(path, SAE_CFG_FILENAME)
         with open(config_path) as f:
@@ -571,7 +726,8 @@ class SAE(HookedRootModule):
         Load a pretrained SAE from the Hugging Face model hub.
 
         Args:
-            release: The release name. This will be mapped to a huggingface repo id based on the pretrained_saes.yaml file.
+            release: The release name. This will be mapped to a huggingface repo id based on the pretrained_saes.yaml
+                file.
             sae_id: The id of the SAE to load. This will be mapped to a path in the huggingface repo.
             device: The device to load the SAE on.
 
@@ -652,13 +808,38 @@ class SAE(HookedRootModule):
         return sae, cfg_dict, log_sparsities
 
     def get_name(self):
+        """
+        Get a standardized name for this SAE.
+
+        Returns:
+            A string identifier for this SAE based on its model, hook point, and size
+        """
         return f"sae_{self.cfg.model_name}_{self.cfg.hook_name}_{self.cfg.d_sae}"
 
     @classmethod
     def from_dict(cls, config_dict: dict[str, Any]) -> "SAE":
+        """
+        Create an SAE instance from a configuration dictionary.
+
+        Args:
+            config_dict: Dictionary containing SAE configuration parameters
+
+        Returns:
+            A new SAE instance configured according to the provided dictionary
+        """
         return cls(SAEConfig.from_dict(config_dict))
 
     def turn_on_forward_pass_hook_z_reshaping(self):
+        """
+        Enable reshaping for attention head outputs (hook_z).
+
+        This method sets up the SAE to automatically reshape inputs from attention heads
+        during the forward pass. It flattens the head dimension and feature dimension
+        for processing, then restructures them on output.
+
+        Raises:
+            ValueError: If the SAE is not attached to an attention output hook
+        """
         if not self.cfg.hook_name.endswith("_z"):
             raise ValueError("This method should only be called for hook_z SAEs.")
 
@@ -677,6 +858,13 @@ class SAE(HookedRootModule):
         self.hook_z_reshaping_mode = True
 
     def turn_off_forward_pass_hook_z_reshaping(self):
+        """
+        Disable reshaping for attention head outputs.
+
+        This method reverts the SAE to the standard behavior without any
+        special reshaping for attention head outputs. This is the default
+        state for SAEs not attached to attention output hooks.
+        """
         self.reshape_fn_in = lambda x: x
         self.reshape_fn_out = lambda x, d_head: x  # noqa: ARG005
         self.d_head = None
