@@ -96,19 +96,19 @@ class ActivationsStore:
     ) -> ActivationsStore:
         """
         Create an ActivationsStore instance from a configuration object.
-        
+
         This factory method creates an ActivationsStore configured according to the
         provided configuration object, which can be either a LanguageModelSAERunnerConfig
         or a CacheActivationsRunnerConfig.
-        
+
         Args:
             model: The language model to extract activations from
             cfg: Configuration object containing parameters for the ActivationsStore
             override_dataset: Optional dataset to use instead of the one specified in the config
-            
+
         Returns:
             An initialized ActivationsStore instance
-            
+
         Raises:
             ValueError: If neither a dataset is provided nor a dataset_path is specified in the config
         """
@@ -179,10 +179,10 @@ class ActivationsStore:
     ) -> ActivationsStore:
         """
         Create an ActivationsStore instance from an existing SAE.
-        
+
         This factory method creates an ActivationsStore that's compatible with a given SAE,
         using the SAE's configuration to set up the necessary parameters.
-        
+
         Args:
             model: The language model to extract activations from
             sae: The SAE to create an ActivationsStore for
@@ -194,7 +194,7 @@ class ActivationsStore:
             train_batch_size_tokens: Batch size for training
             total_tokens: Total number of tokens to process
             device: Device to store activations on
-            
+
         Returns:
             An initialized ActivationsStore instance configured for the given SAE
         """
@@ -246,10 +246,10 @@ class ActivationsStore:
     ):
         """
         Initialize an ActivationsStore instance.
-        
+
         The ActivationsStore is responsible for extracting, storing, and batching
         activations from a language model for training or evaluating an SAE.
-        
+
         Args:
             model: The language model to extract activations from
             dataset: The dataset to use for generating activations, either a dataset object or path
@@ -446,15 +446,15 @@ class ActivationsStore:
     def load_cached_activation_dataset(self) -> Dataset | None:
         """
         Load the cached activation dataset from disk.
-        
+
         If cached_activations_path is set, this method loads a Huggingface Dataset
         from the specified path. It also validates that the dataset
         has activations for the config-specified hook and that the dimensions match the
         expected values.
-        
+
         Returns:
             A Huggingface Dataset containing cached activations, or None if no path is set
-            
+
         Raises:
             FileNotFoundError: If the cache directory does not exist
             ValueError: If the loaded dataset does not include the required hook activations
@@ -504,25 +504,28 @@ class ActivationsStore:
     def set_norm_scaling_factor_if_needed(self):
         """
         Set the norm scaling factor if normalization is enabled.
-        
+
         This method estimates and sets the scaling factor for activation normalization
         if a supported normalization method was selected (e.g. 'expected_average_only_in').
         """
-        if self.normalize_activations == "expected_average_only_in":
+        if (
+            self.normalize_activations == "expected_average_only_in"
+            and self.estimated_norm_scaling_factor is None
+        ):
             self.estimated_norm_scaling_factor = self.estimate_norm_scaling_factor()
 
     def apply_norm_scaling_factor(self, activations: torch.Tensor) -> torch.Tensor:
         """
         Apply the norm scaling factor to the activations.
-        
+
         This method multiplies the activations by the scaling factor to normalize them.
-        
+
         Args:
             activations: Tensor of activations to normalize
-            
+
         Returns:
             Normalized activation tensor
-            
+
         Raises:
             ValueError: If the scaling factor has not been set
         """
@@ -535,16 +538,16 @@ class ActivationsStore:
     def unscale(self, activations: torch.Tensor) -> torch.Tensor:
         """
         Remove the applied norm scaling from activations.
-        
+
         This method divides the activations by the scaling factor to restore their
         original scale.
-        
+
         Args:
             activations: Tensor of normalized activations
-            
+
         Returns:
             Unscaled activation tensor
-            
+
         Raises:
             ValueError: If the scaling factor has not been set
         """
@@ -557,13 +560,13 @@ class ActivationsStore:
     def get_norm_scaling_factor(self, activations: torch.Tensor) -> torch.Tensor:
         """
         Calculate the norm scaling factor for a batch of activations.
-        
+
         This method computes the factor needed to scale the mean norm of the activations
         to the square root of the input dimension.
-        
+
         Args:
             activations: Tensor of activations
-            
+
         Returns:
             Tensor containing the scaling factor
         """
@@ -573,17 +576,17 @@ class ActivationsStore:
     def estimate_norm_scaling_factor(self, n_batches_for_norm_estimate: int = int(1e3)):
         """
         Estimate the norm scaling factor from a sample of activation batches.
-        
+
         This method samples multiple batches of activations and computes the average
         of their mean norms, then calculates the scaling factor needed to normalize
         them to have a mean norm of sqrt(d_in).
-        
+
         Args:
             n_batches_for_norm_estimate: Number of batches to sample for the estimate
-            
+
         Returns:
             The estimated norm scaling factor
-            
+
         Note:
             At the conclusion of a call of this method, self.estimated_norm_scaling_factor will be None no matter what
             it was beforehand
@@ -603,12 +606,12 @@ class ActivationsStore:
     def shuffle_input_dataset(self, seed: int, buffer_size: int = 1):
         """
         Shuffle the input dataset with the given seed.
-        
+
         This method applies a shuffle to the Huggingface dataset that is used
         as input to the activations store. For streaming datasets, it also shuffles
         the shards of the dataset, which is useful for evaluating on different
         sections of very large datasets.
-        
+
         Args:
             seed: Random seed to use for shuffling
             buffer_size: Size of the shuffle buffer for streaming datasets (irrelevant for non-streaming).
@@ -946,12 +949,12 @@ class ActivationsStore:
     def state_dict(self) -> dict[str, torch.Tensor]:
         """
         Create a state dictionary for serialization.
-        
+
         This method returns a dictionary containing the state of the ActivationsStore,
         which can be used to save and restore the state of the store. The state includes
         the number of processed dataset items, the storage buffer contents, and the
         estimated normalization scaling factor if applicable.
-        
+
         Returns:
             Dictionary containing the state of the ActivationsStore as tensors
         """

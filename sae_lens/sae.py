@@ -8,7 +8,7 @@ import warnings
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Literal, Optional, Tuple, TypeVar, Union, overload
+from typing import Any, Callable, Literal, TypeVar, overload
 
 import einops
 import torch
@@ -53,7 +53,7 @@ class SAEConfig:
     model_name: str
     hook_name: str
     hook_layer: int
-    hook_head_index: Optional[int]
+    hook_head_index: int | None
     prepend_bos: bool
     dataset_path: str
     dataset_trust_remote_code: bool
@@ -62,9 +62,9 @@ class SAEConfig:
     # misc
     dtype: str
     device: str
-    sae_lens_training_version: Optional[str]
+    sae_lens_training_version: str | None
     activation_fn_kwargs: dict[str, Any] = field(default_factory=dict)
-    neuronpedia_id: Optional[str] = None
+    neuronpedia_id: str | None = None
     model_from_pretrained_kwargs: dict[str, Any] = field(default_factory=dict)
     seqpos_slice: tuple[int | None, ...] = (None,)
 
@@ -257,14 +257,14 @@ class SAE(HookedRootModule):
     def initialize_weights_basic(self):
         """
         Initialize weights for the standard SAE architecture.
-        
+
         This method initializes the following parameters:
         - b_enc: Encoder bias (initialized to zeros)
         - W_dec: Decoder weights (initialized with Kaiming uniform)
         - W_enc: Encoder weights (initialized with Kaiming uniform)
         - b_dec: Decoder bias (initialized to zeros)
         - finetuning_scaling_factor: Optional parameter for feature scaling during fine-tuning
-        
+
         The initialization uses the dimensions, dtype and device specified in the SAE's configuration.
         """
         # no config changes encoder bias init for now.
@@ -304,7 +304,7 @@ class SAE(HookedRootModule):
     def initialize_weights_gated(self):
         """
         Initialize weights for the gated SAE architecture.
-        
+
         This method initializes the following parameters:
         - W_enc: Shared encoder weights for both gating and magnitude paths
         - b_gate: Bias for the gating path
@@ -312,11 +312,11 @@ class SAE(HookedRootModule):
         - b_mag: Bias for the magnitude path
         - W_dec: Decoder weights
         - b_dec: Decoder bias
-        
+
         The gated architecture separates activation into two paths:
         1. A gating path that determines which features are active (binary)
         2. A magnitude path that determines the strength of active features
-        
+
         The initialization uses the dimensions, dtype and device specified in the SAE's configuration.
         """
         # Initialize the weights and biases for the gated encoder
@@ -355,14 +355,14 @@ class SAE(HookedRootModule):
     def initialize_weights_jumprelu(self):
         """
         Initialize weights for the JumpReLU SAE architecture.
-        
+
         This method initializes a threshold parameter that determines when features activate,
         then otherwise initializes the 'basic' set of weights for an SAE
-        
+
         The JumpReLU architecture uses a special activation function that combines ReLU
         with a thresholding operation - features only activate when their pre-activation
         exceeds the learned thresholds.
-        
+
         The initialization uses the dimensions, dtype and device specified in the SAE's configuration.
         """
         # The params are identical to the standard SAE
@@ -375,8 +375,8 @@ class SAE(HookedRootModule):
     @overload
     def to(
         self: T,
-        device: Optional[Union[torch.device, str]] = ...,
-        dtype: Optional[torch.dtype] = ...,
+        device: torch.device | str | None = ...,
+        dtype: torch.dtype | None = ...,
         non_blocking: bool = ...,
     ) -> T: ...
 
@@ -389,19 +389,19 @@ class SAE(HookedRootModule):
     def to(self, *args: Any, **kwargs: Any) -> "SAE":  # type: ignore
         """
         Move the SAE to the specified device and/or change its data type.
-        
+
         This method extends the standard PyTorch to() functionality to also update
         the device and dtype properties in the SAE's configuration object, ensuring
         consistency between the model parameters and the saved configuration.
-        
+
         Args:
             *args: Positional arguments which may include device, dtype, or a tensor
                   whose properties will be used
             **kwargs: Keyword arguments which may include device or dtype
-            
+
         Returns:
             The SAE instance after moving to the specified device/dtype
-            
+
         Note:
             This overrides the standard PyTorch to() method to keep track of device
             and dtype changes in the SAE configuration.
@@ -452,17 +452,17 @@ class SAE(HookedRootModule):
     ) -> torch.Tensor:
         """
         Forward pass of the SAE.
-        
+
         Processes input activations by encoding them into features, then decoding
         those features back to the input space. Optionally adds an error term to
         preserve information that wasn't captured by the SAE features.
-        
+
         Args:
             x: Input tensor containing model activations
-            
+
         Returns:
             Output tensor containing the reconstructed activations
-            
+
         Note:
             When use_error_term is True, the SAE will add back the reconstruction error,
             which makes the output identical to the input except insofar as there are interventions
@@ -670,16 +670,14 @@ class SAE(HookedRootModule):
         self.cfg.normalize_activations = "none"
 
     @overload
-    def save_model(self, path: str | Path) -> Tuple[Path, Path]: ...
+    def save_model(self, path: str | Path) -> tuple[Path, Path]: ...
 
     @overload
     def save_model(
         self, path: str | Path, sparsity: torch.Tensor
-    ) -> Tuple[Path, Path, Path]: ...
+    ) -> tuple[Path, Path, Path]: ...
 
-    def save_model(
-        self, path: str | Path, sparsity: Optional[torch.Tensor] = None
-    ) -> Union[Tuple[Path, Path], Tuple[Path, Path, Path]]:
+    def save_model(self, path: str | Path, sparsity: torch.Tensor | None = None):
         """
         Save the SAE model to disk.
 
@@ -798,7 +796,7 @@ class SAE(HookedRootModule):
         release: str,
         sae_id: str,
         device: str = "cpu",
-    ) -> Tuple["SAE", dict[str, Any], Optional[torch.Tensor]]:
+    ) -> tuple["SAE", dict[str, Any], torch.Tensor | None]:
         """
 
         Load a pretrained SAE from the Hugging Face model hub.

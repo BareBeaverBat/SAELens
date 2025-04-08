@@ -1,6 +1,6 @@
 import logging
 from contextlib import contextmanager
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable
 
 import torch
 from jaxtyping import Float
@@ -12,7 +12,7 @@ from sae_lens.sae import SAE
 
 SingleLoss = Float[torch.Tensor, ""]  # Type alias for a single element tensor
 LossPerToken = Float[torch.Tensor, "batch pos-1"]
-Loss = Union[SingleLoss, LossPerToken]
+Loss = SingleLoss | LossPerToken
 
 
 def get_deep_attr(obj: Any, path: str):
@@ -66,9 +66,9 @@ class HookedSAETransformer(HookedTransformer):
             **model_kwargs: Keyword arguments for HookedTransformer initialization
         """
         super().__init__(*model_args, **model_kwargs)
-        self.acts_to_saes: Dict[str, SAE] = {}  # type: ignore
+        self.acts_to_saes: dict[str, SAE] = {}  # type: ignore
 
-    def add_sae(self, sae: SAE, use_error_term: Optional[bool] = None):
+    def add_sae(self, sae: SAE, use_error_term: bool | None = None):
         """
         Attach an SAE to the model.
 
@@ -101,7 +101,7 @@ class HookedSAETransformer(HookedTransformer):
         set_deep_attr(self, act_name, sae)
         self.setup()
 
-    def _reset_sae(self, act_name: str, prev_sae: Optional[SAE] = None):
+    def _reset_sae(self, act_name: str, prev_sae: SAE | None = None):
         """
         Reset or replace an SAE attached to a specific hook point.
 
@@ -139,8 +139,8 @@ class HookedSAETransformer(HookedTransformer):
 
     def reset_saes(
         self,
-        act_names: Optional[Union[str, List[str]]] = None,
-        prev_saes: Optional[List[Union[SAE, None]]] = None,
+        act_names: str | list[str] | None = None,
+        prev_saes: list[SAE | None] | None = None,
     ):
         """
         Reset one, multiple, or all SAEs attached to the model.
@@ -184,25 +184,25 @@ class HookedSAETransformer(HookedTransformer):
     def run_with_saes(
         self,
         *model_args: Any,
-        saes: Union[SAE, List[SAE]] = [],
+        saes: SAE | list[SAE] = [],
         reset_saes_end: bool = True,
-        use_error_term: Optional[bool] = None,
+        use_error_term: bool | None = None,
         **model_kwargs: Any,
-    ) -> Union[
-        None,
-        Float[torch.Tensor, "batch pos d_vocab"],
-        Loss,
-        Tuple[Float[torch.Tensor, "batch pos d_vocab"], Loss],
-    ]:
+    ) -> (
+        None
+        | Float[torch.Tensor, "batch pos d_vocab"]
+        | Loss
+        | tuple[Float[torch.Tensor, "batch pos d_vocab"], Loss]
+    ):
         """Wrapper around HookedTransformer forward pass.
 
         Runs the model with the given SAEs attached for one forward pass, then removes them. By default, will reset all SAEs to original state after.
 
         Args:
             *model_args: Positional arguments for the model forward pass
-            saes: (Union[HookedSAE, List[HookedSAE]]) The SAEs to be attached for this forward pass
+            saes: (SAE | list[SAE]) The SAEs to be attached for this forward pass
             reset_saes_end (bool): If True, all SAEs added during this run are removed at the end, and previously attached SAEs are restored to their original state. Default is True.
-            use_error_term: (Optional[bool]) If provided, will set the use_error_term attribute of all SAEs attached during this run to this value. Defaults to None.
+            use_error_term: (bool | None) If provided, will set the use_error_term attribute of all SAEs attached during this run to this value. Defaults to None.
             **model_kwargs: Keyword arguments for the model forward pass
         """
         with self.saes(
@@ -213,20 +213,18 @@ class HookedSAETransformer(HookedTransformer):
     def run_with_cache_with_saes(
         self,
         *model_args: Any,
-        saes: Union[SAE, List[SAE]] = [],
+        saes: SAE | list[SAE] = [],
         reset_saes_end: bool = True,
-        use_error_term: Optional[bool] = None,
+        use_error_term: bool | None = None,
         return_cache_object: bool = True,
         remove_batch_dim: bool = False,
         **kwargs: Any,
-    ) -> Tuple[
-        Union[
-            None,
-            Float[torch.Tensor, "batch pos d_vocab"],
-            Loss,
-            Tuple[Float[torch.Tensor, "batch pos d_vocab"], Loss],
-        ],
-        Union[ActivationCache, Dict[str, torch.Tensor]],
+    ) -> tuple[
+        None
+        | Float[torch.Tensor, "batch pos d_vocab"]
+        | Loss
+        | tuple[Float[torch.Tensor, "batch pos d_vocab"], Loss],
+        ActivationCache | dict[str, torch.Tensor],
     ]:
         """Wrapper around 'run_with_cache' in HookedTransformer.
 
@@ -235,9 +233,9 @@ class HookedSAETransformer(HookedTransformer):
 
         Args:
             *model_args: Positional arguments for the model forward pass
-            saes: (Union[HookedSAE, List[HookedSAE]]) The SAEs to be attached for this forward pass
+            saes: (SAE | list[SAE]) The SAEs to be attached for this forward pass
             reset_saes_end: (bool) If True, all SAEs added during this run are removed at the end, and previously attached SAEs are restored to their original state. Default is True.
-            use_error_term: (Optional[bool]) If provided, will set the use_error_term attribute of all SAEs attached during this run to this value. Determines whether the SAE returns input or reconstruction. Defaults to None.
+            use_error_term: (bool | None) If provided, will set the use_error_term attribute of all SAEs attached during this run to this value. Determines whether the SAE returns input or reconstruction. Defaults to None.
             return_cache_object: (bool) if True, this will return an ActivationCache object, with a bunch of
                 useful HookedTransformer specific methods, otherwise it will return a dictionary of
                 activations as in HookedRootModule.
@@ -257,10 +255,10 @@ class HookedSAETransformer(HookedTransformer):
     def run_with_hooks_with_saes(
         self,
         *model_args: Any,
-        saes: Union[SAE, List[SAE]] = [],
+        saes: SAE | list[SAE] = [],
         reset_saes_end: bool = True,
-        fwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],  # type: ignore
-        bwd_hooks: List[Tuple[Union[str, Callable], Callable]] = [],  # type: ignore
+        fwd_hooks: list[tuple[str | Callable, Callable]] = [],  # type: ignore
+        bwd_hooks: list[tuple[str | Callable, Callable]] = [],  # type: ignore
         reset_hooks_end: bool = True,
         clear_contexts: bool = False,
         **model_kwargs: Any,
@@ -272,10 +270,10 @@ class HookedSAETransformer(HookedTransformer):
 
         Args:
             *model_args: Positional arguments for the model forward pass
-            saes: (Union[SAE, List[SAE]]) The SAEs to be attached for this forward pass
+            saes: (SAE | list[SAE]) The SAEs to be attached for this forward pass
             reset_saes_end: (bool) If True, all SAEs added during this run are removed at the end, and previously attached SAEs are restored to their original state. (default: True)
-            fwd_hooks: (List[Tuple[Union[str, Callable], Callable]]) List of forward hooks to apply
-            bwd_hooks: (List[Tuple[Union[str, Callable], Callable]]) List of backward hooks to apply
+            fwd_hooks: (list[tuple[str | Callable, Callable]]) List of forward hooks to apply
+            bwd_hooks: (list[tuple[str | Callable, Callable]]) List of backward hooks to apply
             reset_hooks_end: (bool) Whether to reset the hooks at the end of the forward pass (default: True)
             clear_contexts: (bool) Whether to clear the contexts at the end of the forward pass (default: False)
             **model_kwargs: Keyword arguments for the model forward pass
@@ -293,9 +291,9 @@ class HookedSAETransformer(HookedTransformer):
     @contextmanager
     def saes(
         self,
-        saes: Union[SAE, List[SAE]] = [],
+        saes: SAE | list[SAE] = [],
         reset_saes_end: bool = True,
-        use_error_term: Optional[bool] = None,
+        use_error_term: bool | None = None,
     ):
         """
         A context manager for adding temporary SAEs to the model.
@@ -306,19 +304,20 @@ class HookedSAETransformer(HookedTransformer):
 
         .. code-block:: python
 
-            from transformer_lens import HookedSAETransformer, HookedSAE, HookedSAEConfig
+            from transformer_lens import HookedSAETransformer
+            from sae_lens.sae import SAE
 
             model = HookedSAETransformer.from_pretrained('gpt2-small')
-            sae_cfg = HookedSAEConfig(...)
-            sae = HookedSAE(sae_cfg)
+            sae_cfg = SAEConfig(...)
+            sae = SAE(sae_cfg)
             with model.saes(saes=[sae]):
                 spliced_logits = model(text)
 
 
         Args:
-            saes (Union[HookedSAE, List[HookedSAE]]): SAEs to be attached.
+            saes (SAE | list[SAE]): SAEs to be attached.
             reset_saes_end (bool): If True, removes all SAEs added by this context manager when the context manager exits, returning previously attached SAEs to their original state.
-            use_error_term (Optional[bool]): If provided, will set the use_error_term attribute of all SAEs attached during this run to this value. Defaults to None.
+            use_error_term (bool | None): If provided, will set the use_error_term attribute of all SAEs attached during this run to this value. Defaults to None.
         """
         act_names_to_reset = []
         prev_saes = []
