@@ -255,6 +255,18 @@ class SAE(HookedRootModule):
         self.setup()  # Required for `HookedRootModule`s
 
     def initialize_weights_basic(self):
+        """
+        Initialize weights for the standard SAE architecture.
+        
+        This method initializes the following parameters:
+        - b_enc: Encoder bias (initialized to zeros)
+        - W_dec: Decoder weights (initialized with Kaiming uniform)
+        - W_enc: Encoder weights (initialized with Kaiming uniform)
+        - b_dec: Decoder bias (initialized to zeros)
+        - finetuning_scaling_factor: Optional parameter for feature scaling during fine-tuning
+        
+        The initialization uses the dimensions, dtype and device specified in the SAE's configuration.
+        """
         # no config changes encoder bias init for now.
         self.b_enc = nn.Parameter(
             torch.zeros(self.cfg.d_sae, dtype=self.dtype, device=self.device)
@@ -290,6 +302,23 @@ class SAE(HookedRootModule):
             )
 
     def initialize_weights_gated(self):
+        """
+        Initialize weights for the gated SAE architecture.
+        
+        This method initializes the following parameters:
+        - W_enc: Shared encoder weights for both gating and magnitude paths
+        - b_gate: Bias for the gating path
+        - r_mag: Log-scale factor for the magnitude path weights
+        - b_mag: Bias for the magnitude path
+        - W_dec: Decoder weights
+        - b_dec: Decoder bias
+        
+        The gated architecture separates activation into two paths:
+        1. A gating path that determines which features are active (binary)
+        2. A magnitude path that determines the strength of active features
+        
+        The initialization uses the dimensions, dtype and device specified in the SAE's configuration.
+        """
         # Initialize the weights and biases for the gated encoder
         self.W_enc = nn.Parameter(
             torch.nn.init.kaiming_uniform_(
@@ -324,6 +353,18 @@ class SAE(HookedRootModule):
         )
 
     def initialize_weights_jumprelu(self):
+        """
+        Initialize weights for the JumpReLU SAE architecture.
+        
+        This method initializes a threshold parameter that determines when features activate,
+        then otherwise initializes the 'basic' set of weights for an SAE
+        
+        The JumpReLU architecture uses a special activation function that combines ReLU
+        with a thresholding operation - features only activate when their pre-activation
+        exceeds the learned thresholds.
+        
+        The initialization uses the dimensions, dtype and device specified in the SAE's configuration.
+        """
         # The params are identical to the standard SAE
         # except we use a threshold parameter too
         self.threshold = nn.Parameter(
@@ -346,6 +387,25 @@ class SAE(HookedRootModule):
     def to(self: T, tensor: torch.Tensor, non_blocking: bool = ...) -> T: ...
 
     def to(self, *args: Any, **kwargs: Any) -> "SAE":  # type: ignore
+        """
+        Move the SAE to the specified device and/or change its data type.
+        
+        This method extends the standard PyTorch to() functionality to also update
+        the device and dtype properties in the SAE's configuration object, ensuring
+        consistency between the model parameters and the saved configuration.
+        
+        Args:
+            *args: Positional arguments which may include device, dtype, or a tensor
+                  whose properties will be used
+            **kwargs: Keyword arguments which may include device or dtype
+            
+        Returns:
+            The SAE instance after moving to the specified device/dtype
+            
+        Note:
+            This overrides the standard PyTorch to() method to keep track of device
+            and dtype changes in the SAE configuration.
+        """
         device_arg = None
         dtype_arg = None
 
@@ -390,6 +450,24 @@ class SAE(HookedRootModule):
         self,
         x: torch.Tensor,
     ) -> torch.Tensor:
+        """
+        Forward pass of the SAE.
+        
+        Processes input activations by encoding them into features, then decoding
+        those features back to the input space. Optionally adds an error term to
+        preserve information that wasn't captured by the SAE features.
+        
+        Args:
+            x: Input tensor containing model activations
+            
+        Returns:
+            Output tensor containing the reconstructed activations
+            
+        Note:
+            When use_error_term is True, the SAE will add back the reconstruction error,
+            which makes the output identical to the input except insofar as there are interventions
+            that modify feature activations
+        """
         feature_acts = self.encode(x)
         sae_out = self.decode(feature_acts)
 

@@ -94,6 +94,24 @@ class ActivationsStore:
         cfg: LanguageModelSAERunnerConfig | CacheActivationsRunnerConfig,
         override_dataset: HfDataset | None = None,
     ) -> ActivationsStore:
+        """
+        Create an ActivationsStore instance from a configuration object.
+        
+        This factory method creates an ActivationsStore configured according to the
+        provided configuration object, which can be either a LanguageModelSAERunnerConfig
+        or a CacheActivationsRunnerConfig.
+        
+        Args:
+            model: The language model to extract activations from
+            cfg: Configuration object containing parameters for the ActivationsStore
+            override_dataset: Optional dataset to use instead of the one specified in the config
+            
+        Returns:
+            An initialized ActivationsStore instance
+            
+        Raises:
+            ValueError: If neither a dataset is provided nor a dataset_path is specified in the config
+        """
         if isinstance(cfg, CacheActivationsRunnerConfig):
             return cls.from_cache_activations(model, cfg)
 
@@ -159,6 +177,27 @@ class ActivationsStore:
         total_tokens: int = 10**9,
         device: str = "cpu",
     ) -> ActivationsStore:
+        """
+        Create an ActivationsStore instance from an existing SAE.
+        
+        This factory method creates an ActivationsStore that's compatible with a given SAE,
+        using the SAE's configuration to set up the necessary parameters.
+        
+        Args:
+            model: The language model to extract activations from
+            sae: The SAE to create an ActivationsStore for
+            context_size: Optional context size override (defaults to sae.cfg.context_size)
+            dataset: Optional dataset override (defaults to sae.cfg.dataset_path)
+            streaming: Whether to stream the dataset
+            store_batch_size_prompts: Batch size when generating activations from the model
+            n_batches_in_buffer: Number of batches to store in the buffer
+            train_batch_size_tokens: Batch size for training
+            total_tokens: Total number of tokens to process
+            device: Device to store activations on
+            
+        Returns:
+            An initialized ActivationsStore instance configured for the given SAE
+        """
         return cls(
             model=model,
             dataset=sae.cfg.dataset_path if dataset is None else dataset,
@@ -205,10 +244,43 @@ class ActivationsStore:
         seqpos_slice: tuple[int | None, ...] = (None,),
         exclude_special_tokens: torch.Tensor | None = None,
     ):
+        """
+        Initialize an ActivationsStore instance.
+        
+        The ActivationsStore is responsible for extracting, storing, and batching
+        activations from a language model for training or evaluating an SAE.
+        
+        Args:
+            model: The language model to extract activations from
+            dataset: The dataset to use for generating activations, either a dataset object or path
+            streaming: Whether to stream the dataset (useful for large datasets)
+            hook_name: The name of the hook to extract activations from
+            hook_layer: The layer index of the hook
+            hook_head_index: Optional head index for attention hooks
+            context_size: The number of tokens in a given sequence/context (within a batch)
+            d_in: Input dimension of the activations
+            n_batches_in_buffer: Number of batches to store in the buffer (the actual number of batches stored in the
+                buffer seems to be half this number, rounded down) TODO confirm with maintainers
+            total_training_tokens: Total number of tokens to process during training, not necessarily used for anything
+                more than 1 sanity check during activation store construction
+            store_batch_size_prompts: default batch size when drawing tokens from dataset (e.g. for generating
+                activations from model)
+            train_batch_size_tokens: batch size for activations that are returned from the buffer for training the SAE
+            prepend_bos: Whether to prepend BOS token to sequences
+            normalize_activations: Method for normalizing activations
+            device: Device to store tokens and activations on
+            dtype: Data type for activations
+            cached_activations_path: Optional path to cached activations
+            model_kwargs: Additional kwargs for model.run_with_cache
+            autocast_lm: Whether to use autocast when getting activations
+            dataset_trust_remote_code: Whether to trust remote code when loading dataset
+            seqpos_slice: optional 1-Tuple or 3-Tuple specifying which sequence positions to use
+            exclude_special_tokens: Optional tensor of token IDs to exclude from SAE training (i.e. the activations data
+                being generated for SAE training will not include intermediate activations from positions in a sequence
+                where the tokens at those positions in the input sequence were excluded special tokens)
+        """
         self.model = model
-        if model_kwargs is None:
-            model_kwargs = {}
-        self.model_kwargs = model_kwargs
+        self.model_kwargs = {} if model_kwargs is None else model_kwargs
         self.dataset = (
             load_dataset(
                 dataset,
@@ -224,6 +296,9 @@ class ActivationsStore:
             self.dataset = cast(Dataset | DatasetDict, self.dataset)
             n_samples = len(self.dataset)
 
+            # TODO confirm with maintainers- doesn't this check assume that each row of the Dataset only contains a
+            #  single token? but doesn't the later check of dataset context size from dataset_sample seem to assume
+            #  that a given row of the Dataset might contain multiple tokens?
             if n_samples < total_training_tokens:
                 warnings.warn(
                     f"The training dataset contains fewer samples ({n_samples}) than the number of samples required by your training configuration ({total_training_tokens}). This will result in multiple training epochs and some samples being used more than once."
@@ -371,9 +446,19 @@ class ActivationsStore:
     def load_cached_activation_dataset(self) -> Dataset | None:
         """
         Load the cached activation dataset from disk.
-
-        - If cached_activations_path is set, returns Huggingface Dataset else None
-        - Checks that the loaded dataset has current has activations for hooks in config and that shapes match.
+        
+        If cached_activations_path is set, this method loads a Huggingface Dataset
+        from the specified path. It also validates that the dataset
+        has activations for the config-specified hook and that the dimensions match the
+        expected values.
+        
+        Returns:
+            A Huggingface Dataset containing cached activations, or None if no path is set
+            
+        Raises:
+            FileNotFoundError: If the cache directory does not exist
+            ValueError: If the loaded dataset does not include the required hook activations
+                        or if the shape of the activations doesn't match the expected dimensions
         """
         if self.cached_activations_path is None:
             return None
@@ -417,10 +502,30 @@ class ActivationsStore:
         return activations_dataset
 
     def set_norm_scaling_factor_if_needed(self):
+        """
+        Set the norm scaling factor if normalization is enabled.
+        
+        This method estimates and sets the scaling factor for activation normalization
+        if a supported normalization method was selected (e.g. 'expected_average_only_in').
+        """
         if self.normalize_activations == "expected_average_only_in":
             self.estimated_norm_scaling_factor = self.estimate_norm_scaling_factor()
 
     def apply_norm_scaling_factor(self, activations: torch.Tensor) -> torch.Tensor:
+        """
+        Apply the norm scaling factor to the activations.
+        
+        This method multiplies the activations by the scaling factor to normalize them.
+        
+        Args:
+            activations: Tensor of activations to normalize
+            
+        Returns:
+            Normalized activation tensor
+            
+        Raises:
+            ValueError: If the scaling factor has not been set
+        """
         if self.estimated_norm_scaling_factor is None:
             raise ValueError(
                 "estimated_norm_scaling_factor is not set, call set_norm_scaling_factor_if_needed() first"
@@ -428,6 +533,21 @@ class ActivationsStore:
         return activations * self.estimated_norm_scaling_factor
 
     def unscale(self, activations: torch.Tensor) -> torch.Tensor:
+        """
+        Remove the applied norm scaling from activations.
+        
+        This method divides the activations by the scaling factor to restore their
+        original scale.
+        
+        Args:
+            activations: Tensor of normalized activations
+            
+        Returns:
+            Unscaled activation tensor
+            
+        Raises:
+            ValueError: If the scaling factor has not been set
+        """
         if self.estimated_norm_scaling_factor is None:
             raise ValueError(
                 "estimated_norm_scaling_factor is not set, call set_norm_scaling_factor_if_needed() first"
@@ -435,15 +555,44 @@ class ActivationsStore:
         return activations / self.estimated_norm_scaling_factor
 
     def get_norm_scaling_factor(self, activations: torch.Tensor) -> torch.Tensor:
+        """
+        Calculate the norm scaling factor for a batch of activations.
+        
+        This method computes the factor needed to scale the mean norm of the activations
+        to the square root of the input dimension.
+        
+        Args:
+            activations: Tensor of activations
+            
+        Returns:
+            Tensor containing the scaling factor
+        """
         return (self.d_in**0.5) / activations.norm(dim=-1).mean()
 
     @torch.no_grad()
     def estimate_norm_scaling_factor(self, n_batches_for_norm_estimate: int = int(1e3)):
+        """
+        Estimate the norm scaling factor from a sample of activation batches.
+        
+        This method samples multiple batches of activations and computes the average
+        of their mean norms, then calculates the scaling factor needed to normalize
+        them to have a mean norm of sqrt(d_in).
+        
+        Args:
+            n_batches_for_norm_estimate: Number of batches to sample for the estimate
+            
+        Returns:
+            The estimated norm scaling factor
+            
+        Note:
+            At the conclusion of a call of this method, self.estimated_norm_scaling_factor will be None no matter what
+            it was beforehand
+        """
         norms_per_batch = []
         for _ in tqdm(
             range(n_batches_for_norm_estimate), desc="Estimating norm scaling factor"
         ):
-            # temporalily set estimated_norm_scaling_factor to 1.0 so the dataloader works
+            # temporarily set estimated_norm_scaling_factor to 1.0 so the dataloader works
             self.estimated_norm_scaling_factor = 1.0
             acts = self.next_batch()[0]
             self.estimated_norm_scaling_factor = None
@@ -453,11 +602,18 @@ class ActivationsStore:
 
     def shuffle_input_dataset(self, seed: int, buffer_size: int = 1):
         """
-        This applies a shuffle to the huggingface dataset that is the input to the activations store. This
-        also shuffles the shards of the dataset, which is especially useful for evaluating on different
-        sections of very large streaming datasets. Buffer size is only relevant for streaming datasets.
-        The default buffer_size of 1 means that only the shard will be shuffled; larger buffer sizes will
-        additionally shuffle individual elements within the shard.
+        Shuffle the input dataset with the given seed.
+        
+        This method applies a shuffle to the Huggingface dataset that is used
+        as input to the activations store. For streaming datasets, it also shuffles
+        the shards of the dataset, which is useful for evaluating on different
+        sections of very large datasets.
+        
+        Args:
+            seed: Random seed to use for shuffling
+            buffer_size: Size of the shuffle buffer for streaming datasets (irrelevant for non-streaming).
+                        The default of 1 means only shards will be shuffled; larger values will also
+                        shuffle elements within each shard.
         """
         if isinstance(self.dataset, IterableDataset):
             self.dataset = self.dataset.shuffle(seed=seed, buffer_size=buffer_size)
@@ -467,7 +623,7 @@ class ActivationsStore:
 
     def reset_input_dataset(self):
         """
-        Resets the input dataset iterator to the beginning.
+        Reset the input dataset iterator to the beginning.
         """
         self.iterable_dataset = iter(self.dataset)
 
@@ -492,12 +648,14 @@ class ActivationsStore:
         """
         Streams a batch of tokens from a dataset.
 
-        If raise_at_epoch_end is true we will reset the dataset at the end of each epoch and raise a StopIteration. Otherwise we will reset silently.
+        If raise_at_epoch_end is true we will reset the dataset at the end of each epoch and raise a StopIteration.
+        Otherwise, we will reset silently.
         """
         if not batch_size:
             batch_size = self.store_batch_size_prompts
         sequences = []
-        # the sequences iterator yields fully formed tokens of size context_size, so we just need to cat these into a batch
+        # the sequences iterator yields fully formed token sequences of size context_size, so we just need to cat these
+        #  into a batch
         for _ in range(batch_size):
             try:
                 sequences.append(next(self.iterable_sequences))
@@ -650,7 +808,8 @@ class ActivationsStore:
 
         The primary purpose here is maintaining a shuffling buffer.
 
-        If raise_on_epoch_end is True, when the dataset it exhausted it will automatically refill the dataset and then raise a StopIteration so that the caller has a chance to react.
+        If raise_on_epoch_end is True, when the dataset it exhausted it will automatically refill the dataset and then
+        raise a StopIteration so that the caller has a chance to react.
         """
         context_size = self.context_size
         training_context_size = len(range(context_size)[slice(*self.seqpos_slice)])
@@ -785,6 +944,17 @@ class ActivationsStore:
             return next(self.dataloader)
 
     def state_dict(self) -> dict[str, torch.Tensor]:
+        """
+        Create a state dictionary for serialization.
+        
+        This method returns a dictionary containing the state of the ActivationsStore,
+        which can be used to save and restore the state of the store. The state includes
+        the number of processed dataset items, the storage buffer contents, and the
+        estimated normalization scaling factor if applicable.
+        
+        Returns:
+            Dictionary containing the state of the ActivationsStore as tensors
+        """
         result = {
             "n_dataset_processed": torch.tensor(self.n_dataset_processed),
         }

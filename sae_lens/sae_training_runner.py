@@ -44,6 +44,19 @@ class SAETrainingRunner:
         override_model: HookedRootModule | None = None,
         override_sae: TrainingSAE | None = None,
     ):
+        """
+        Initialize a SAETrainingRunner instance.
+        
+        This class orchestrates the training of a Sparse Autoencoder on activations
+        from a language model, setting up the model, dataset, and SAE according to
+        the provided configuration.
+        
+        Args:
+            cfg: Configuration containing parameters for training
+            override_dataset: Optional dataset to use instead of the one specified in the config
+            override_model: Optional model to use instead of loading one according to the config
+            override_sae: Optional SAE to use instead of creating one according to the config
+        """
         if override_dataset is not None:
             logger.warning(
                 f"You just passed in a dataset which will override the one specified in your configuration: {cfg.dataset_path}. As a consequence this run will not be reproducible via configuration alone."
@@ -142,6 +155,22 @@ class SAETrainingRunner:
             )  # type: ignore
 
     def run_trainer_with_interruption_handling(self, trainer: SAETrainer):
+        """
+        Run the SAE trainer with handling for interruptions.
+        
+        This method uses signal handlers and a try-catch to gracefully handle interruptions
+        (e.g., KeyboardInterrupt, SIGTERM) by saving a checkpoint before exiting.
+        
+        Args:
+            trainer: The SAETrainer instance to run
+            
+        Returns:
+            The trained SAE
+            
+        Raises:
+            KeyboardInterrupt: Re-raised after saving checkpoint
+            InterruptedException: Raised by signal handlers and re-raised after saving checkpoint
+        """
         try:
             # signal handlers (if preempted)
             signal.signal(signal.SIGINT, interrupt_callback)
@@ -185,6 +214,21 @@ class SAETrainingRunner:
         checkpoint_name: str,
         wandb_aliases: list[str] | None = None,
     ) -> None:
+        """
+        Save a checkpoint of the trainer's state.
+        
+        This method saves:
+        1. The activations store state
+        2. The SAE model weights and configuration
+        3. Log-scale feature sparsity data
+        
+        If Weights & Biases logging is enabled, it also logs these artifacts to W&B.
+        
+        Args:
+            trainer: The SAETrainer instance whose state should be saved
+            checkpoint_name: Name for the checkpoint (used in file/directory naming)
+            wandb_aliases: Optional list of aliases to apply to the saved W&B model artifact
+        """
         base_path = Path(trainer.cfg.checkpoint_path) / checkpoint_name
         base_path.mkdir(exist_ok=True, parents=True)
 

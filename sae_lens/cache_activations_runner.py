@@ -59,6 +59,16 @@ class CacheActivationsRunner:
         cfg: CacheActivationsRunnerConfig,
         override_dataset: Dataset | None = None,
     ):
+        """
+        Initialize a CacheActivationsRunner instance.
+        
+        This class orchestrates the caching of activations from a language model,
+        storing them in a format that can be used for training and evaluating SAEs.
+        
+        Args:
+            cfg: Configuration containing parameters for caching activations
+            override_dataset: Optional dataset to use instead of the one specified in the config
+        """
         self.cfg = cfg
         self.model: HookedRootModule = load_model(
             model_class_name=self.cfg.model_class_name,
@@ -244,6 +254,22 @@ class CacheActivationsRunner:
 
     @torch.no_grad()
     def run(self) -> Dataset:
+        """
+        Run the activation caching process.
+        
+        This method:
+        1. Sets up the necessary directories
+        2. Extracts activations from the model and stores them in temporary shards
+        3. Consolidates the shards into a single dataset
+        4. Optionally shuffles the dataset
+        5. Optionally pushes the dataset to the Hugging Face Hub
+        
+        Returns:
+            The consolidated dataset containing the cached activations
+            
+        Raises:
+            Exception: If the activations directory is not empty or if other errors occur during caching
+        """
         activation_save_path = self.cfg.new_cached_activations_path
         assert activation_save_path is not None
 
