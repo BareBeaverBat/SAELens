@@ -178,6 +178,17 @@ class TrainingSAEConfig(SAEConfig):
 
     @classmethod
     def from_dict(cls, config_dict: dict[str, Any]) -> "TrainingSAEConfig":
+        """
+        Create a TrainingSAEConfig instance from a configuration dictionary, filtering for just relevant keys
+        in the dictionary and specially handling cases where the "seqpos_slice" key maps to a list or int
+        rather than a tuple of ints
+
+        Args:
+            config_dict: a dictionary containing configuration values for an SAE object that will undergo training
+
+        Returns:
+            A new TrainingSAEConfig instance with values extracted from the configuration dictionary
+        """
         # remove any keys that are not in the dataclass
         # since we sometimes enhance the config with the whole LM runner config
         valid_field_names = {field.name for field in fields(cls)}
@@ -199,6 +210,13 @@ class TrainingSAEConfig(SAEConfig):
         return TrainingSAEConfig(**valid_config_dict)
 
     def to_dict(self) -> dict[str, Any]:
+        """
+        Converts the config dataclass to a configuration dictionary, including inherited details about
+        general SAE configuration
+
+        Returns:
+            a dictionary specifying a configuration for an SAE object that will undergo training
+        """
         return {
             **super().to_dict(),
             "l1_coefficient": self.l1_coefficient,
@@ -752,6 +770,18 @@ class TrainingSAE(SAE):
         device: str = "cpu",
         dtype: str | None = None,
     ) -> "TrainingSAE":
+        """
+        Loads a pre-trained SAE from local files into an SAE object that is prepared for further training
+
+        Args:
+             path: the path to the folder that contains the pre-trained SAE's configuration file and saved weights
+             device: the device on which the SAE's weights should be loaded
+             dtype: the data type of the weights loaded
+
+        Returns:
+            a trainable SAE instance whose configuration and weights are initialized based on a previously completed
+            SAE training run
+        """
         # get the config
         config_path = os.path.join(path, SAE_CFG_PATH)
         with open(config_path) as f:
@@ -776,7 +806,9 @@ class TrainingSAE(SAE):
         return sae
 
     def initialize_weights_complex(self):
-        """ """
+        """
+        Handles edge cases in the initialization of SAE weights for training
+        """
 
         if self.cfg.decoder_orthogonal_init:
             self.W_dec.data = nn.init.orthogonal_(self.W_dec.data.T).T
@@ -811,6 +843,10 @@ class TrainingSAE(SAE):
 
     @torch.no_grad()
     def fold_W_dec_norm(self):
+        """
+        Works like the parent class implementation, except with special handling for the JumpReLU SAE's
+        threshold values being stored in log-scale during training
+        """
         # need to deal with the jumprelu having a log_threshold in training
         if self.cfg.architecture == "jumprelu":
             cur_threshold = self.threshold.clone()
@@ -823,11 +859,21 @@ class TrainingSAE(SAE):
     ## Initialization Methods
     @torch.no_grad()
     def initialize_b_dec_with_precalculated(self, origin: torch.Tensor):
+        """
+        Initialize the decoder biases according to a specific tensor while making sure that the datatype and device
+        remain consistent among the SAE's weights tensors
+        """
         out = torch.tensor(origin, dtype=self.dtype, device=self.device)
         self.b_dec.data = out
 
     @torch.no_grad()
     def initialize_b_dec_with_mean(self, all_activations: torch.Tensor):
+        """
+        Initialize each latent's decoder bias to the mean of that latent's activations on some dataset.
+
+        Args:
+            all_activations: activations for all latents on some dataset
+        """
         previous_b_dec = self.b_dec.clone().cpu()
         out = all_activations.mean(dim=0)
 
@@ -845,6 +891,9 @@ class TrainingSAE(SAE):
     ## Training Utils
     @torch.no_grad()
     def set_decoder_norm_to_unit_norm(self):
+        """
+        Normalize each latent's decoder direction to have unit norm.
+        """
         self.W_dec.data /= torch.norm(self.W_dec.data, dim=1, keepdim=True)
 
     @torch.no_grad()
