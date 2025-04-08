@@ -127,14 +127,14 @@ class TrainingSAEConfig(SAEConfig):
     ) -> "TrainingSAEConfig":
         """
         Create a TrainingSAEConfig from a LanguageModelSAERunnerConfig.
-        
+
         This method converts a higher-level LanguageModelSAERunnerConfig (which includes
         parameters for the entire training pipeline) into a TrainingSAEConfig (which only
         includes parameters relevant to the SAE itself).
-        
+
         Args:
             cfg: LanguageModelSAERunnerConfig instance containing the full configuration
-            
+
         Returns:
             A new TrainingSAEConfig instance with parameters extracted from the input config
         """
@@ -239,11 +239,11 @@ class TrainingSAEConfig(SAEConfig):
     def get_base_sae_cfg_dict(self) -> dict[str, Any]:
         """
         Get a dictionary of configuration parameters for the base SAE.
-        
+
         This method extracts configuration parameters that are relevant to the base SAE
         class, filtering out parameters that are specific to training. This is useful
         when initializing a parent SAE instance with only the relevant parameters.
-        
+
         Returns:
             Dictionary containing configuration parameters for the base SAE
         """
@@ -315,10 +315,10 @@ class TrainingSAE(SAE):
     def initialize_weights_jumprelu(self):
         """
         Initialize weights for the JumpReLU SAE used in training.
-        
+
         This method is similar to the parent class implementation but uses a log-parameterized
         threshold (log_threshold) instead of a direct threshold parameter (for numerical stability during training)
-        
+
         It otherwise initializes the 'basic' set of weights for an SAE
         """
         # same as the superclass, except we use a log_threshold parameter instead of threshold
@@ -337,10 +337,10 @@ class TrainingSAE(SAE):
     def from_dict(cls, config_dict: dict[str, Any]) -> "TrainingSAE":
         """
         Create a TrainingSAE instance from a configuration dictionary.
-        
+
         Args:
             config_dict: Dictionary containing TrainingSAE configuration parameters
-            
+
         Returns:
             A new TrainingSAE instance configured according to the provided dictionary
         """
@@ -349,11 +349,11 @@ class TrainingSAE(SAE):
     def check_cfg_compatibility(self):
         """
         Verify that the configuration settings are compatible with each other.
-        
+
         This method performs compatibility checks between various configuration options:
         - Ensures ghost gradients are only used with standard architecture
         - Ensures error terms are not used with gated architecture
-        
+
         Raises:
             ValueError: If incompatible configuration settings are detected
         """
@@ -376,14 +376,14 @@ class TrainingSAE(SAE):
     ) -> tuple[Float[torch.Tensor, "... d_sae"], Float[torch.Tensor, "... d_sae"]]:
         """
         Encode input using the JumpReLU architecture and return both activations and pre-activations.
-        
+
         This method performs the forward pass for the JumpReLU architecture, which
         uses a learned threshold parameter to determine feature activation. During training,
         noise is optionally added to the pre-activations.
-        
+
         Args:
             x: Input tensor
-            
+
         Returns:
             Tuple containing:
             - Feature activations after JumpReLU
@@ -409,14 +409,14 @@ class TrainingSAE(SAE):
     ) -> tuple[Float[torch.Tensor, "... d_sae"], Float[torch.Tensor, "... d_sae"]]:
         """
         Encode input using the standard architecture and return both activations and pre-activations.
-        
+
         This method performs the forward pass for the standard SAE architecture.
         During training, noise is optionally added to the pre-activations before
         applying the activation function.
-        
+
         Args:
             x: Input tensor
-            
+
         Returns:
             Tuple containing:
             - Feature activations after the activation function
@@ -443,10 +443,10 @@ class TrainingSAE(SAE):
         separates activation into two paths:
         1. A gating path that determines which features are active (binary)
         2. A magnitude path that determines the strength of active features
-        
+
         Args:
             x: Input tensor
-            
+
         Returns:
             Tuple containing:
             - Gated feature activations (active_features * feature_magnitudes)
@@ -479,14 +479,14 @@ class TrainingSAE(SAE):
     ) -> Float[torch.Tensor, "... d_in"]:
         """
         Forward pass of the TrainingSAE.
-        
+
         This is similar to the parent class's forward method, but uses the architecture-specific
         encode_with_hidden_pre_fn method rather than the standard encode method (for consistency with
         the training_forward_pass() method)
-        
+
         Args:
             x: Input tensor with shape (..., d_in)
-            
+
         Returns:
             Output tensor containing the reconstructed activations with shape (..., d_in)
         """
@@ -501,7 +501,7 @@ class TrainingSAE(SAE):
     ) -> TrainStepOutput:
         """
         Perform a forward pass during training, computing losses for optimization.
-        
+
         This method performs the full training forward pass, including:
         1. Encoding the input to get feature activations
         2. Decoding to reconstruct the input
@@ -514,7 +514,7 @@ class TrainingSAE(SAE):
             current_l1_coefficient: Current L1 coefficient for sparsity penalty
             dead_neuron_mask: Optional mask indicating which neurons are considered dead
                               (used for ghost gradients and topk auxiliary loss)
-            
+
         Returns:
             TrainStepOutput object containing the computed tensors and losses
         """
@@ -615,17 +615,17 @@ class TrainingSAE(SAE):
     ) -> torch.Tensor:
         """
         Calculate the auxiliary loss for TopK SAEs to handle dead features.
-        
-        This method implements an auxiliary loss that encourages dead features 
-        to learn to reconstruct the residual errors of the active features. 
+
+        This method implements an auxiliary loss that encourages dead features
+        to learn to reconstruct the residual errors of the active features.
         This helps prevent dead features and improves training dynamics.
-        
+
         Args:
             sae_in: Input tensor of activations
             sae_out: Output tensor (reconstructed activations)
             hidden_pre: Pre-activation values before applying activation function
             dead_neuron_mask: Boolean mask indicating which neurons are considered dead
-            
+
         Returns:
             Scalar tensor containing the auxiliary loss, or a zero tensor if no dead neurons
         """
@@ -664,18 +664,18 @@ class TrainingSAE(SAE):
     ) -> torch.Tensor:
         """
         Calculate the ghost gradient loss for standard SAEs to handle dead features.
-        
+
         Ghost gradients provide a way to update dead neurons by computing an auxiliary
         reconstruction task using only the dead neurons (and an exponential activation function),
         allowing them to learn to reconstruct the residual error of the active neurons.
-        
+
         Args:
             x: Input tensor of activations
             sae_out: Output tensor (reconstructed activations)
             per_item_mse_loss: MSE loss for each input item
             hidden_pre: Pre-activation values before applying activation function
             dead_neuron_mask: Boolean mask indicating which neurons are considered dead
-            
+
         Returns:
             Scalar tensor containing the ghost gradient loss
         """
@@ -731,11 +731,11 @@ class TrainingSAE(SAE):
     def process_state_dict_for_saving(self, state_dict: dict[str, Any]) -> None:
         """
         Process the state dictionary before saving.
-        
+
         This method overrides the parent class implementation to handle the log-parameterized
         threshold in JumpReLU TrainingSAEs. When saving, it converts the log_threshold parameter to
         a regular threshold parameter by applying the exponential function.
-        
+
         Args:
             state_dict: The model's state dictionary, to be modified in-place
         """
@@ -747,11 +747,11 @@ class TrainingSAE(SAE):
     def process_state_dict_for_loading(self, state_dict: dict[str, Any]) -> None:
         """
         Process the state dictionary after loading.
-        
+
         This method overrides the parent class implementation to handle the log-parameterized
         threshold in JumpReLU TrainingSAEs. When loading, it converts the threshold parameter to
         a log_threshold parameter by applying the natural logarithm.
-        
+
         Args:
             state_dict: The loaded state dictionary, to be modified in-place
         """

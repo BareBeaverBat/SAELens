@@ -431,11 +431,11 @@ class LanguageModelSAERunnerConfig:
     def get_base_sae_cfg_dict(self) -> dict[str, Any]:
         """
         Get a dictionary of configuration parameters for the base SAE.
-        
+
         This method extracts configuration parameters that are relevant to the base SAE
         class, filtering out parameters that are specific to training or the runner.
         This is useful when initializing a SAE instance with only the relevant parameters.
-        
+
         Returns:
             Dictionary containing configuration parameters for the base SAE
         """
@@ -467,11 +467,11 @@ class LanguageModelSAERunnerConfig:
     def get_training_sae_cfg_dict(self) -> dict[str, Any]:
         """
         Get a dictionary of configuration parameters for the TrainingSAE.
-        
+
         This method combines the base SAE configuration with additional parameters
         that are specific to training. This includes parameters for loss calculation,
         weight initialization, and other training-specific settings.
-        
+
         Returns:
             Dictionary containing configuration parameters for the TrainingSAE
         """
@@ -495,11 +495,11 @@ class LanguageModelSAERunnerConfig:
     def to_dict(self) -> dict[str, Any]:
         """
         Convert the configuration to a dictionary.
-        
+
         This method converts the configuration object to a dictionary, ensuring that
         all values are serializable. Non-serializable values like torch.dtype and
         torch.device are converted in the process.
-        
+
         Returns:
             Dictionary representation of the configuration
         """
@@ -514,10 +514,10 @@ class LanguageModelSAERunnerConfig:
     def to_json(self, path: str) -> None:
         """
         Save the configuration to a JSON file.
-        
+
         This method saves the configuration as a JSON file at the specified path,
         creating any necessary directories if they don't exist.
-        
+
         Args:
             path: Path to the folder where the JSON file should be saved
         """
@@ -531,14 +531,14 @@ class LanguageModelSAERunnerConfig:
     def from_json(cls, path: str) -> "LanguageModelSAERunnerConfig":
         """
         Load a configuration from a JSON file.
-        
+
         This method loads a configuration from a JSON file at the specified path,
         ensuring that data types are properly converted (e.g., a list or individual int to a tuple for
         seqpos_slice).
-        
+
         Args:
             path: Path to the JSON file (without extension)
-            
+
         Returns:
             Initialized LanguageModelSAERunnerConfig instance
         """

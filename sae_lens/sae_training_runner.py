@@ -46,11 +46,11 @@ class SAETrainingRunner:
     ):
         """
         Initialize a SAETrainingRunner instance.
-        
+
         This class orchestrates the training of a Sparse Autoencoder on activations
         from a language model, setting up the model, dataset, and SAE according to
         the provided configuration.
-        
+
         Args:
             cfg: Configuration containing parameters for training
             override_dataset: Optional dataset to use instead of the one specified in the config
@@ -157,16 +157,16 @@ class SAETrainingRunner:
     def run_trainer_with_interruption_handling(self, trainer: SAETrainer):
         """
         Run the SAE trainer with handling for interruptions.
-        
+
         This method uses signal handlers and a try-catch to gracefully handle interruptions
         (e.g., KeyboardInterrupt, SIGTERM) by saving a checkpoint before exiting.
-        
+
         Args:
             trainer: The SAETrainer instance to run
-            
+
         Returns:
             The trained SAE
-            
+
         Raises:
             KeyboardInterrupt: Re-raised after saving checkpoint
             InterruptedException: Raised by signal handlers and re-raised after saving checkpoint
@@ -218,14 +218,14 @@ class SAETrainingRunner:
     ) -> None:
         """
         Save a checkpoint of the trainer's state.
-        
+
         This method saves:
         1. The activations store state
         2. The SAE model weights and configuration
         3. Log-scale feature sparsity data
-        
+
         If Weights & Biases logging is enabled, it also logs these artifacts to W&B.
-        
+
         Args:
             trainer: The SAETrainer instance whose state should be saved
             checkpoint_name: Name for the checkpoint (used in file/directory naming)
